@@ -115,7 +115,7 @@ class Seq2Seq(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, num_labels, dec_hidden_size, hidden_size):
         super(Discriminator, self).__init__()
-        self.W = nn.Linear(num_labels, 2* hidden_size)
+        self.W = nn.Linear(num_labels, 2 * hidden_size)
         self.v = nn.Linear(2 * hidden_size, 1)
         self.gru = nn.GRU(dec_hidden_size, hidden_size,
                           batch_first=True,
@@ -128,9 +128,8 @@ class Discriminator(nn.Module):
         hidden = torch.cat([h for hidden], dim=1)  # [b, 2*d]
 
         l_W = self.W(attr_vector)  # [b, 2*d]
-        l_W_phi = torch.sum(l_W * hidden, dim=1)   # [b,1]
-        v_phi = self.v(hidden)   # [b, 1]
-        prob = F.sigmoid(l_W_phi + v_phi).squeeze(1)
+        l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b,1]
+        v_phi = self.v(hidden)  # [b, 1]
+        prob = F.sigmoid(l_W_phi + v_phi).squeeze(1)  # [b]
 
         return prob
-
