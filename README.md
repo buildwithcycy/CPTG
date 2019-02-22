@@ -1,2 +1,3 @@
 # CPTG
-implementation of Content preserving text generation with attribute controls in Pytorch
+This is not an official code and still ongoing repository
+Implementation of Content preserving text generation with attribute controls(https://arxiv.org/abs/1811.01135) in Pytorch
