@@ -109,3 +109,6 @@ class Seq2Seq(nn.Module):
         logits_x, sampled_xs = self.decoder(go_token, src_max_len, z_xy, l_x)
 
         return logits_x  # [b * t, |V|]
+
+
+# TODO implement Discriminator
