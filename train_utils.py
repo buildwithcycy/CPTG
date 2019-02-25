@@ -11,8 +11,8 @@ def step(model, pos_data, neg_data):
     x_neg = x_neg.to(config.device)
     l_neg = l_neg.to(config.device)
     # forward pass
-    pos_logits = model(x_pos, pos_len, l_pos, neg_len, l_neg)
-    neg_logits = model(x_neg, neg_len, l_neg, pos_len, l_pos)
+    pos_logits, adv_pos_logits = model(x_pos, pos_len, l_pos, neg_len, l_neg)
+    neg_logits, adv_neg_logits = model(x_neg, neg_len, l_neg, pos_len, l_pos)
     logits = torch.cat((pos_logits, neg_logits), dim=0)
     pos_targets = x_pos.view(-1)
     neg_targets = x_neg.view(-1)
@@ -28,5 +28,12 @@ def outputids2words(ids, idx2word):
             word = idx2word[id]
         else:
             word = idx2word[UNK_ID]
+
         words.append(word)
-    return " ".join(words)
+    try:
+        fst_eos_idx = words.index("<EOS>")
+        words = words[:fst_eos_idx]
+    except ValueError:
+        words = words
+    sentence = " ".join(words)
+    return sentence

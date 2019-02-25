@@ -78,6 +78,14 @@ def inference(model, pos_data_loader, neg_data_loader, idx2word):
             total_neg_sents.extend(neg_sents)
             total_pos_sents.extend(pos_sents)
 
+    # write the results into text file
+    with open("result/pos2neg.txt", "w", encoding="utf-8") as f:
+        for original_pos_sent, decoded_pos_sent in zip(original_pos_sents, total_pos_sents):
+            f.write(original_pos_sent + " -> " + decoded_pos_sent + "\n")
+    with open("result/neg2pos.txt", "w", encoding="utf-8") as f:
+        for original_neg_sent, decoded_neg_sent in zip(original_neg_sents, total_neg_sents):
+            f.write(original_neg_sent + " -> " + decoded_neg_sent + "\n")
+
     return total_pos_sents, total_neg_sents, original_pos_sents, original_neg_sents
 
 
