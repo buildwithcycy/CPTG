@@ -67,13 +67,17 @@ def inference(model, pos_data_loader, neg_data_loader, idx2word):
 
             pos2neg = model.decode(x_pos, pos_len, l_neg, config.max_decode_step)
             neg2pos = model.decode(x_neg, neg_len, l_pos, config.max_decode_step)
+
             origin_pos_sent = [outputids2words(x, idx2word) for x in x_pos.detach()]
             origin_neg_sent = [outputids2words(x, idx2word) for x in x_neg.detach()]
+            original_pos_sents.extend(origin_pos_sent)
+            original_neg_sents.extend(origin_neg_sent)
+
             neg_sents = [outputids2words(x, idx2word) for x in pos2neg.detach()]
             pos_sents = [outputids2words(x, idx2word) for x in neg2pos.detach()]
             total_neg_sents.extend(neg_sents)
             total_pos_sents.extend(pos_sents)
-        # for debugging only get 1 example
+
     return total_pos_sents, total_neg_sents, original_pos_sents, original_neg_sents
 
 
@@ -105,21 +109,22 @@ def main():
                                 is_neg=True,
                                 batch_size=16)
 
+    # for debugging we use train-set
     test_pos_loader = get_loader(train_file_paths[1], word2idx,
                                  is_neg=False,
                                  debug=config.debug,
                                  shuffle=False,
-                                 batch_size=1)
+                                 batch_size=16)
     test_neg_loader = get_loader(train_file_paths[0], word2idx,
                                  is_neg=True,
                                  shuffle=False,
                                  debug=config.debug,
-                                 batch_size=1)
+                                 batch_size=16)
 
     train_data = zip(train_pos_loader, train_neg_loader)
     dev_data = zip(dev_pos_loader, dev_neg_loader)
     train(model, train_data, dev_data)
-    # use train data to decode for debugging 
+    # use train data to decode for debugging
     pos_sents, neg_sents, original_pos_sents, original_neg_sents = inference(model, test_pos_loader,
                                                                              test_neg_loader, idx2word)
     idx = np.random.randint(0, 100)
