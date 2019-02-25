@@ -85,30 +85,51 @@ class Seq2Seq(nn.Module):
                                           att_embedding_size)
         self.sampler = Bernoulli(ber_prob)
 
-    def forward(self, src_inputs, src_len, src_atts, trg_max_len, trg_atts):
+    def forward(self, src_inputs, src_len, src_attr, trg_len, trg_attr):
         """
 
         :param src_inputs: [b, t]; x
-        :param src_atts : [b, 1]; l
-        :param trg_atts: [b, 1]; l
+        :param src_len: [b] length of valid x
+        :param src_attr : [b, 1]; l_x
+        :param trg_len: [b] length of valid y
+        :param trg_attr: [b, 1]; l_y
         :return:
         """
         # translation from x to y
         batch_size, src_max_len = list(src_inputs.size(0))
+        trg_max_len = torch.max(trg_len).item()
 
         z_x = self.encoder(src_inputs, src_len)
-        l_y = self.att_embedding(trg_atts)
+        l_y = self.att_embedding(trg_attr)
         go_token = torch.LongTensor([[START_ID]] * batch_size)
         logits_y, sampled_ys = self.decoder(go_token, trg_max_len, z_x, l_y)
 
         # back translation from y to x
-        z_y = self.encoder(sampled_ys, )
+        z_y = self.encoder(sampled_ys, trg_len)
         gate = self.sampler.sample(sample_shape=z_y.size())
         z_xy = gate * z_x + (1 - gate) * z_y
-        l_x = self.att_embedding(src_atts)
+        l_x = self.att_embedding(src_attr)
         logits_x, sampled_xs = self.decoder(go_token, src_max_len, z_xy, l_x)
 
         return logits_x  # [b * t, |V|]
+
+    def decode(self, inputs, src_len, trg_attr, max_decode_step):
+        """
+
+        :param inputs: source input; [b,t]
+        :param src_len: length of valid x [b]
+        :param trg_attr: target attribute l_y
+        :param max_decode_step: max time steps to decode
+        :return:
+        """
+        with torch.no_grad():
+            batch_size = inputs.size(0)
+            z_x = self.encoder(inputs, src_len)
+            l_y = self.att_embedding(trg_attr)
+            start_token = torch.LongTensor([[START_ID]] * batch_size)
+            _, sampled_ys = self.decoder(start_token, max_decode_step, z_x, l_y)
+
+        return sampled_ys
 
 
 # TODO implement Discriminator
@@ -125,7 +146,7 @@ class Discriminator(nn.Module):
         # inputs :[b, t, d]
         packed = pack_padded_sequence(inputs, seq_len, batch_first=True)
         _, hidden = self.gru(packed)  # [2, b, d]
-        hidden = torch.cat([h for hidden], dim=1)  # [b, 2*d]
+        hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
 
         l_W = self.W(attr_vector)  # [b, 2*d]
         l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b,1]
