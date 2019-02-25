@@ -13,6 +13,30 @@ START_ID = 2
 STOP_ID = 3
 
 
+def build_vocab(file_paths, max_vocab_size=50000):
+    counter = dict()
+    for file_path in file_paths:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                words = line.split()
+                for word in words:
+                    if word not in counter:
+                        counter[word] = 1
+                    else:
+                        counter[word] += 1
+
+    sorted_vocab = sorted(counter.items(), key=lambda kv: kv[1], reverse=True)
+    sorted_vocab = sorted_vocab[:max_vocab_size]
+    word2idx = {word: i for i, (word, freq) in enumerate(sorted_vocab, start=4)}
+    word2idx[PAD_TOKEN] = 0
+    word2idx[UNK_TOKEN] = 1
+    word2idx[START_TOKEN] = 2
+    word2idx[STOP_TOKEN] = 3
+    idx2word = {i: word for word, i in word2idx.items()}
+
+    return word2idx, idx2word
+
+
 class YelpDataset(data.Dataset):
     def __init__(self, file_path, word2idx, is_neg, debug=False):
         seqs = open(file_path, "r", encoding="utf-8").readlines()
@@ -26,10 +50,11 @@ class YelpDataset(data.Dataset):
         if debug:
             self.seqs = self.seqs[:100]
             self.labels = self.labels[:100]
+            self.num_total_seqs = len(self.seqs)
 
     def __getitem__(self, index):
         seq = self.seqs[index]
-        label = self.labels[index]
+        label = torch.LongTensor(self.labels[index])
         seq = self.words2ids(seq)
         return seq, label
 
@@ -45,6 +70,7 @@ class YelpDataset(data.Dataset):
             else:
                 sequence.append(self.word2idx[UNK_TOKEN])
         sequence.append(self.word2idx[STOP_TOKEN])
+        sequence = torch.Tensor(sequence)
         return sequence
 
 
@@ -61,8 +87,9 @@ def collate_fn(data):
 
     seqs, labels = zip(*data)
     seqs, seq_lens = merge(seqs)
+    labels = torch.cat(labels, dim=0)
 
-    return seqs, seq_lens
+    return seqs, seq_lens, labels
 
 
 def get_loader(file_path, word2idx, is_neg, batch_size=32,
@@ -71,5 +98,6 @@ def get_loader(file_path, word2idx, is_neg, batch_size=32,
     data_loader = data.DataLoader(dataset,
                                   batch_size=batch_size,
                                   shuffle=shuffle,
+                                  drop_last=True,
                                   collate_fn=collate_fn)
     return data_loader

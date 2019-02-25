@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,7 +20,6 @@ class Encoder(nn.Module):
                           batch_first=True,
                           num_layers=1,
                           bidirectional=False)
-        self.linear = nn.Linear(hidden_size, vocab_size)
 
     def forward(self, inputs, seq_len):
         total_length = inputs.size(1)
@@ -47,10 +48,12 @@ class Decoder(nn.Module):
         :param inputs: [b, 1]; START TOKEN
         :param max_length: max length to decode
         :param init_hidden: [1, b, d]
-        :param att_embedding: [1, b, d']
+        :param att_embedding: [b, d']
         :return:
         """
+        batch_size = inputs.size(0)
         embedded = self.embedding(inputs)
+        att_embedding = att_embedding.unsqueeze(dim=0)
         prev_hidden = torch.cat((init_hidden, att_embedding), dim=2)
         logits = []
         sampled_ids = []
@@ -66,7 +69,8 @@ class Decoder(nn.Module):
             embedded = self.embedding(sampled_id)
             prev_hidden = hidden
 
-        logits = torch.cat(logits, dim=0)  # [b * t, |V|]
+        logits = torch.stack(logits, dim=1)  # [b, t*|V|] why torch.cat(logits, dim=0) does not work?
+        logits = logits.view(batch_size * max_length, -1)
         sampled_ids = torch.cat(sampled_ids, dim=1)  # [b, t]
         return logits, sampled_ids
 
@@ -81,8 +85,10 @@ class Seq2Seq(nn.Module):
                                config.embedding_size,
                                config.dec_hidden_size)
 
+        self.decoder.embedding.weight = self.encoder.embedding.weight
         self.att_embedding = nn.Embedding(num_atts,
                                           att_embedding_size)
+
         self.sampler = Bernoulli(ber_prob)
 
     def forward(self, src_inputs, src_len, src_attr, trg_len, trg_attr):
@@ -96,17 +102,17 @@ class Seq2Seq(nn.Module):
         :return:
         """
         # translation from x to y
-        batch_size, src_max_len = list(src_inputs.size(0))
-        trg_max_len = torch.max(trg_len).item()
+        batch_size, src_max_len = list(src_inputs.size())
+        trg_max_len = max(trg_len)
 
         z_x = self.encoder(src_inputs, src_len)
         l_y = self.att_embedding(trg_attr)
-        go_token = torch.LongTensor([[START_ID]] * batch_size)
+        go_token = torch.LongTensor([[START_ID]] * batch_size).to(config.device)
         logits_y, sampled_ys = self.decoder(go_token, trg_max_len, z_x, l_y)
 
         # back translation from y to x
         z_y = self.encoder(sampled_ys, trg_len)
-        gate = self.sampler.sample(sample_shape=z_y.size())
+        gate = self.sampler.sample(sample_shape=z_y.size()).to(config.device)
         z_xy = gate * z_x + (1 - gate) * z_y
         l_x = self.att_embedding(src_attr)
         logits_x, sampled_xs = self.decoder(go_token, src_max_len, z_xy, l_x)
@@ -116,7 +122,7 @@ class Seq2Seq(nn.Module):
     def decode(self, inputs, src_len, trg_attr, max_decode_step):
         """
 
-        :param inputs: source input; [b,t]
+        :param inputs: source input; [b,t] but batch size is always 1
         :param src_len: length of valid x [b]
         :param trg_attr: target attribute l_y
         :param max_decode_step: max time steps to decode
@@ -126,10 +132,16 @@ class Seq2Seq(nn.Module):
             batch_size = inputs.size(0)
             z_x = self.encoder(inputs, src_len)
             l_y = self.att_embedding(trg_attr)
-            start_token = torch.LongTensor([[START_ID]] * batch_size)
+            start_token = torch.LongTensor([[START_ID]] * batch_size).to(config.device)
             _, sampled_ys = self.decoder(start_token, max_decode_step, z_x, l_y)
 
         return sampled_ys
+
+    def save(self, dir, epoch, step):
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+        model_save_path = os.path.join(dir, str(step) + "_" + str(epoch) + ".ckpt")
+        torch.save(self.state_dict(), model_save_path)
 
 
 # TODO implement Discriminator
