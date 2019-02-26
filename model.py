@@ -73,7 +73,11 @@ class Decoder(nn.Module):
             embedded = self.embedding(sampled_id)
             prev_hidden = hidden
 
+<<<<<<< HEAD
         hiddens = torch.cat(hiddens, dim=0).transpose(0, 1)  # [t, b, d] -> [b,t,d]
+=======
+        hiddens = torch.stack(hiddens, dim=0).transpose(0, 1)  # [b, t, d]
+>>>>>>> db5edc6144f30bdbda2c7ee71c7891f136ba2bff
         logits = torch.stack(logits, dim=1)  # [b, t*|V|] why torch.cat(logits, dim=0) does not work?
         logits = logits.view(batch_size * max_length, -1)
         sampled_ids = torch.cat(sampled_ids, dim=1)  # [b, t]
