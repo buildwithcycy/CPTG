@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Bernoulli
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-
+from train_utils import sequence_mask
 import config
 from data_utils import START_ID
 
@@ -55,6 +55,7 @@ class Decoder(nn.Module):
         batch_size = inputs.size(0)
         embedded = self.embedding(inputs)
         att_embedding = att_embedding.unsqueeze(dim=0)
+
         prev_hidden = torch.cat((init_hidden, att_embedding), dim=2)
         logits = []
         sampled_ids = []
@@ -72,7 +73,7 @@ class Decoder(nn.Module):
             embedded = self.embedding(sampled_id)
             prev_hidden = hidden
 
-        hiddens = torch.stack(hiddens, dim=1)  # [b, t, d]
+        hiddens = torch.cat(hiddens, dim=0).transpose(0, 1)  # [t, b, d] -> [b,t,d]
         logits = torch.stack(logits, dim=1)  # [b, t*|V|] why torch.cat(logits, dim=0) does not work?
         logits = logits.view(batch_size * max_length, -1)
         sampled_ids = torch.cat(sampled_ids, dim=1)  # [b, t]
@@ -80,17 +81,15 @@ class Decoder(nn.Module):
         return hiddens, logits, sampled_ids
 
 
-class Seq2Seq(nn.Module):
+class Generator(nn.Module):
     def __init__(self, att_embedding_size, num_atts, ber_prob):
-        super(Seq2Seq, self).__init__()
+        super(Generator, self).__init__()
         self.encoder = Encoder(config.vocab_size,
                                config.embedding_size,
                                config.enc_hidden_size)
         self.decoder = Decoder(config.vocab_size,
                                config.embedding_size,
                                config.dec_hidden_size)
-        self.discriminator = Discriminator(2, dec_hidden_size=config.dec_hidden_size,
-                                           hidden_size=config.enc_hidden_size)
 
         self.decoder.embedding.weight = self.encoder.embedding.weight
         self.att_embedding = nn.Embedding(num_atts,
@@ -103,9 +102,9 @@ class Seq2Seq(nn.Module):
 
         :param src_inputs: [b, t]; x
         :param src_len: [b] length of valid x
-        :param src_attr : [b, 1]; l_x
+        :param src_attr : [b]; l_x
         :param trg_len: [b] length of valid y
-        :param trg_attr: [b, 1]; l_y
+        :param trg_attr: [b]; l_y
         :return:
         """
         # translation from x to y
@@ -117,6 +116,10 @@ class Seq2Seq(nn.Module):
         go_token = torch.LongTensor([[START_ID]] * batch_size).to(config.device)
         hiddens_y, logits_y, sampled_ys = self.decoder(go_token, trg_max_len, z_x, l_y)
 
+        # mask for hiddens of PAD
+        y_mask = sequence_mask(trg_len).unsqueeze(-1)
+        hiddens_y = hiddens_y * y_mask
+
         # back translation from y to x
         z_y = self.encoder(sampled_ys, trg_len)
         gate = self.sampler.sample(sample_shape=z_y.size()).to(config.device)
@@ -124,12 +127,12 @@ class Seq2Seq(nn.Module):
         l_x = self.att_embedding(src_attr)
         hiddens_x, recon_logits, sampled_xs = self.decoder(go_token, src_max_len, z_xy, l_x)
 
-        real_logits = self.discriminator(hiddens_x, src_len, l_x)
-        fake_logits_y = self.discriminator(hiddens_y, trg_len, l_y)
-        fake_logits_x = self.discriminator(hiddens_x, src_len, l_y)
-        adv_logits = (real_logits, fake_logits_x, fake_logits_y)
+        # mask for hiddens of PAD and make them constant
+        x_mask = sequence_mask(src_len).unsqueeze(-1)
+        hiddens_x = hiddens_x * x_mask
+        hiddens_x = hiddens_x.detach()
 
-        return recon_logits, adv_logits   # [b * t, |V|]
+        return recon_logits, hiddens_x, hiddens_y  # [b * t, |V|]
 
     def decode(self, inputs, src_len, trg_attr, max_decode_step):
         """
@@ -172,18 +175,18 @@ class Discriminator(nn.Module):
 
         :param inputs: [b, t]
         :param seq_len: [b]
-        :param attr_vector: [b,1]
+        :param attr_vector: [b]
         :return:
         """
-
-        label_vector = torch.zeros(inputs.size(0), self.num_labels)
-        label_vector = label_vector.scatter_(1, attr_vector, 1.)
+        # make one-hot vector
+        label_vector = torch.zeros(inputs.size(0), self.num_labels).to(config.device)
+        label_vector = label_vector.scatter_(1, attr_vector.unsqueeze(1), 1.)
         packed = pack_padded_sequence(inputs, seq_len, batch_first=True)
         _, hidden = self.gru(packed)  # [2, b, d]
         hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
 
         l_W = self.W(label_vector)  # [b, 2*d]
-        l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b,1]
+        l_W_phi = torch.sum(l_W * hidden, dim=1, keepdim=True)  # [b,1]
         v_phi = self.v(hidden)  # [b, 1]
         prob = F.sigmoid(l_W_phi + v_phi).squeeze(1)  # [b]
 

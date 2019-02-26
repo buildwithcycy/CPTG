@@ -8,6 +8,7 @@ dec_hidden_size = 700
 att_embedding_size = 200
 ber_prob = 0.5
 lr = 1e-3
+loss_lambda = 0.5
 max_decode_step = 15
 debug = True
 save_dir = "./save"

@@ -93,11 +93,11 @@ def collate_fn(data):
 
 
 def get_loader(file_path, word2idx, is_neg, batch_size=32,
-               debug=False, shuffle=True):
+               debug=False, shuffle=True, drop_last=True):
     dataset = YelpDataset(file_path, word2idx, is_neg, debug=debug)
     data_loader = data.DataLoader(dataset,
                                   batch_size=batch_size,
                                   shuffle=shuffle,
-                                  drop_last=True,
+                                  drop_last=drop_last,
                                   collate_fn=collate_fn)
     return data_loader
