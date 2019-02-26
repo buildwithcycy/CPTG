@@ -66,7 +66,7 @@ def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
     errD_real = 2 * criterion(real_logits, label)  # 2logD(h_x, l)
 
     # log(1 - D(h_y, l')) + log(1 - D(h_x, l'))
-    label.fill_(fake_label)
+    label = torch.full((batch_size,), fake_label, device=config.device)
     errD_fake_y = criterion(fake_logits_y, label)
     errD_fake_x = criterion(fake_logits_x, label)
     errD_fake = (errD_fake_x + errD_fake_y) / 2
@@ -74,7 +74,7 @@ def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
     errD = errD_real + errD_fake
 
     # loss for generator
-    label.fill_(real_label)
+    label = torch.full((batch_size,), real_label, device=config.device)
     errG_y = criterion(fake_logits_y, label)
     errG_x = criterion(fake_logits_x, label)
     errG = (errG_y + errG_x) / 2
@@ -99,3 +99,10 @@ def outputids2words(ids, idx2word):
         words = words
     sentence = " ".join(words)
     return sentence
+
+
+def make_one_hot(attr, num_labels):
+    batch_size = attr.size(0)
+    one_hot = torch.zeros(batch_size, num_labels)
+    one_hot[range(batch_size), attr] = 1
+    return one_hot

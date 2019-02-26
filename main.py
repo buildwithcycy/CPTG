@@ -27,9 +27,8 @@ def train(generator, discriminator, train_data, dev_data):
                 # backward pass for generator
                 optimizerG.zero_grad()
                 generator_loss = recon_loss + errG * config.loss_lambda
-                generator_loss.backward()
+                generator_loss.backward(retain_graph=True)
                 optimizerG.step()
-                print("step for generator")
                 # backward pass for discriminator
                 optimizerD.zero_grad()
                 errD.backward()

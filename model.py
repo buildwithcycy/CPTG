@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Bernoulli
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from train_utils import sequence_mask
+from train_utils import sequence_mask, make_one_hot
 import config
 from data_utils import START_ID
 
@@ -179,8 +179,7 @@ class Discriminator(nn.Module):
         :return:
         """
         # make one-hot vector
-        label_vector = torch.zeros(inputs.size(0), self.num_labels).to(config.device)
-        label_vector = label_vector.scatter_(1, attr_vector.unsqueeze(1), 1.)
+        label_vector = make_one_hot(attr_vector, self.num_labels).to(config.device)
         packed = pack_padded_sequence(inputs, seq_len, batch_first=True)
         _, hidden = self.gru(packed)  # [2, b, d]
         hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
@@ -188,6 +187,6 @@ class Discriminator(nn.Module):
         l_W = self.W(label_vector)  # [b, 2*d]
         l_W_phi = torch.sum(l_W * hidden, dim=1, keepdim=True)  # [b,1]
         v_phi = self.v(hidden)  # [b, 1]
-        prob = F.sigmoid(l_W_phi + v_phi).squeeze(1)  # [b]
+        prob = torch.sigmoid(l_W_phi + v_phi).squeeze(1)  # [b]
 
         return prob
