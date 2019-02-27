@@ -75,9 +75,7 @@ def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
 
     # loss for generator
     label = torch.full((batch_size,), real_label, device=config.device)
-    errG_y = criterion(fake_logits_y, label)
-    errG_x = criterion(fake_logits_x, label)
-    errG = (errG_y + errG_x) / 2
+    errG = criterion(fake_logits_y, label)
 
     return errD, errG
 
