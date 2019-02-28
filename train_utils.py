@@ -1,7 +1,10 @@
+import time
+
 import torch
 import torch.nn as nn
-from data_utils import UNK_ID
+
 import config
+from data_utils import UNK_ID
 
 
 def sequence_mask(sequence_length):
@@ -27,25 +30,25 @@ def step(generator, discriminator, criterion, pos_data, neg_data):
     l_neg = l_neg.to(config.device)
     # forward pass
     # reconstruction loss
-    recon_pos_logits, pos_hiddens_x, pos_hiddens_y = generator(x_pos, pos_len, l_pos, neg_len, l_neg)
-    recon_neg_logits, neg_hiddens_x, neg_hiddens_y = generator(x_neg, neg_len, l_neg, pos_len, l_pos)
-    recon_logits = torch.cat((recon_pos_logits, recon_neg_logits), dim=0)
+    pos_recon_logits, pos_hiddens_x, pos_hiddens_y = generator(x_pos, pos_len, l_pos, neg_len, l_neg)
+    neg_recon_logits, neg_hiddens_x, neg_hiddens_y = generator(x_neg, neg_len, l_neg, pos_len, l_pos)
     pos_targets = x_pos.view(-1)
     neg_targets = x_neg.view(-1)
-    recon_targets = torch.cat((pos_targets, neg_targets), dim=0)
-    recon_loss = criterion(recon_logits, recon_targets)
+    pos_recon_loss = criterion(pos_recon_logits, pos_targets)
+    neg_recon_loss = criterion(neg_recon_logits, neg_targets)
+    recon_loss = (pos_recon_loss + neg_recon_loss) / 2
     # adversarial loss
-    pos_real_logits = discriminator(pos_hiddens_x, pos_len, l_pos)
-    pos_fake_logits_x = discriminator(pos_hiddens_x, pos_len, l_neg)
-    pos_fake_logits_y = discriminator(pos_hiddens_y, neg_len, l_pos)
+    pos_real_logits = discriminator(pos_hiddens_x.detach(), pos_len, l_pos)
+    pos_fake_logits_x = discriminator(pos_hiddens_x.detach(), pos_len, l_neg)
+    pos_fake_logits_y = discriminator(pos_hiddens_y.detach(), neg_len, l_neg)
 
     pos_errD, pos_errG = get_adv_loss(pos_real_logits,
                                       pos_fake_logits_x,
                                       pos_fake_logits_y)
 
-    neg_real_logits = discriminator(neg_hiddens_x, neg_len, l_neg)
-    neg_fake_logits_x = discriminator(neg_hiddens_x, neg_len, l_pos)
-    neg_fake_logits_y = discriminator(neg_hiddens_y, pos_len, l_neg)
+    neg_real_logits = discriminator(neg_hiddens_x.detach(), neg_len, l_neg)
+    neg_fake_logits_x = discriminator(neg_hiddens_x.detach(), neg_len, l_pos)
+    neg_fake_logits_y = discriminator(neg_hiddens_y.detach(), pos_len, l_pos)
 
     neg_errD, neg_errG = get_adv_loss(neg_real_logits,
                                       neg_fake_logits_x,
@@ -69,9 +72,9 @@ def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
     label = torch.full((batch_size,), fake_label, device=config.device)
     errD_fake_y = criterion(fake_logits_y, label)
     errD_fake_x = criterion(fake_logits_x, label)
-    errD_fake = (errD_fake_x + errD_fake_y) / 2
+    errD_fake = errD_fake_x + errD_fake_y
 
-    errD = errD_real + errD_fake
+    errD = (errD_real + errD_fake) / 4
 
     # loss for generator
     label = torch.full((batch_size,), real_label, device=config.device)
@@ -104,3 +107,62 @@ def make_one_hot(attr, num_labels):
     one_hot = torch.zeros(batch_size, num_labels)
     one_hot[range(batch_size), attr] = 1
     return one_hot
+
+
+def time_since(t):
+    """ Function for time. """
+    return time.time() - t
+
+
+def progress_bar(completed, total, step=5):
+    """ Function returning a string progress bar. """
+    percent = int((completed / total) * 100)
+    bar = '[='
+    arrow_reached = False
+    for t in range(step, 101, step):
+        if arrow_reached:
+            bar += ' '
+        else:
+            if percent // t != 0:
+                bar += '='
+            else:
+                bar = bar[:-1]
+                bar += '>'
+                arrow_reached = True
+    if percent == 100:
+        bar = bar[:-1]
+        bar += '='
+    bar += ']'
+    return bar
+
+
+def user_friendly_time(s):
+    """ Display a user friendly time from number of second. """
+    s = int(s)
+    if s < 60:
+        return "{}s".format(s)
+
+    m = s // 60
+    s = s % 60
+    if m < 60:
+        return "{}m {}s".format(m, s)
+
+    h = m // 60
+    m = m % 60
+    if h < 24:
+        return "{}h {}m {}s".format(h, m, s)
+
+    d = h // 24
+    h = h % 24
+    return "{}d {}h {}m {}s".format(d, h, m, s)
+
+
+def eta(start, completed, total):
+    """ Function returning an ETA. """
+    # Computation
+    took = time_since(start)
+    time_per_step = took / completed
+    remaining_steps = total - completed
+    remaining_time = time_per_step * remaining_steps
+
+    return user_friendly_time(remaining_time)

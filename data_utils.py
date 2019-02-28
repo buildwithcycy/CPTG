@@ -92,8 +92,10 @@ def collate_fn(data):
     return seqs, seq_lens, labels
 
 
-def get_loader(file_path, word2idx, is_neg, batch_size=32,
-               debug=False, shuffle=True, drop_last=True):
+def get_loader(file_path, word2idx,
+               is_neg, batch_size=32, drop_last=False,
+               debug=False, shuffle=True):
+
     dataset = YelpDataset(file_path, word2idx, is_neg, debug=debug)
     data_loader = data.DataLoader(dataset,
                                   batch_size=batch_size,

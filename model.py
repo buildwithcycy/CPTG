@@ -46,13 +46,14 @@ class Decoder(nn.Module):
     def forward(self, inputs, max_length, init_hidden, att_embedding):
         """
 
-        :param inputs: [b, 1]; START TOKEN
+        :param inputs: [b, 1]; START TOKEN or [b, t+1] for teacher forcing
         :param max_length: max length to decode
         :param init_hidden: [1, b, d]
         :param att_embedding: [b, d']
         :return:
         """
         batch_size = inputs.size(0)
+        total_length = inputs.size(1)
         embedded = self.embedding(inputs)
         att_embedding = att_embedding.unsqueeze(dim=0)
 
@@ -60,17 +61,32 @@ class Decoder(nn.Module):
         logits = []
         sampled_ids = []
         hiddens = []
+        # select only GO_TOKEN embedding when teacher-forcing
+        if total_length > 1:
+            curr_embedded = embedded[:, 0, :].unsqueeze(1)
+        else:
+            curr_embedded = embedded
+
         for t in range(max_length):
-            _, hidden = self.gru(embedded, prev_hidden)  # [1, b, d]
+            _, hidden = self.gru(curr_embedded, prev_hidden)  # [1, b, d]
             hiddens.append(hidden)
             logit = self.linear(hidden.squeeze(0))  # [b, |V|]
             logits.append(logit)
             scores = F.softmax(logit, dim=1)
-            # hard sampling
-            sampled_id = torch.multinomial(scores, num_samples=1)  # [b, 1]
-            sampled_ids.append(sampled_id)
-            # update inputs
-            embedded = self.embedding(sampled_id)
+
+            # hard sampling for y
+            if total_length == 1:
+                sampled_id = torch.multinomial(scores, num_samples=1)  # [b, 1]
+                sampled_ids.append(sampled_id)
+                # update next token embedding
+                curr_embedded = self.embedding(sampled_id)
+
+            else:
+                sampled_id = torch.argmax(scores, 1, keepdim=True)
+                sampled_ids.append(sampled_id)
+                # get next token embedding because it is teacher forcing
+                curr_embedded = embedded[:, t + 1, :].unsqueeze(1)
+            # update hidden
             prev_hidden = hidden
 
         hiddens = torch.cat(hiddens, dim=0).transpose(0, 1)  # [t, b, d] -> [b,t,d]
@@ -103,7 +119,6 @@ class Generator(nn.Module):
         :param src_inputs: [b, t]; x
         :param src_len: [b] length of valid x
         :param src_attr : [b]; l_x
-        :param trg_len: [b] length of valid y
         :param trg_attr: [b]; l_y
         :return:
         """
@@ -122,15 +137,16 @@ class Generator(nn.Module):
 
         # back translation from y to x
         z_y = self.encoder(sampled_ys, trg_len)
+        # Bernoulli sampling
         gate = self.sampler.sample(sample_shape=z_y.size()).to(config.device)
         z_xy = gate * z_x + (1 - gate) * z_y
         l_x = self.att_embedding(src_attr)
-        hiddens_x, recon_logits, sampled_xs = self.decoder(go_token, src_max_len, z_xy, l_x)
-
+        # for reconstructing x we use teacher forcing
+        go_x = torch.cat((go_token, src_inputs), dim=1)
+        hiddens_x, recon_logits, sampled_xs = self.decoder(go_x, src_max_len, z_xy, l_x)
         # mask for hiddens of PAD and make them constant
         x_mask = sequence_mask(src_len).unsqueeze(-1)
         hiddens_x = hiddens_x * x_mask
-        hiddens_x = hiddens_x.detach()
 
         return recon_logits, hiddens_x, hiddens_y  # [b * t, |V|]
 
@@ -148,7 +164,7 @@ class Generator(nn.Module):
             z_x = self.encoder(inputs, src_len)
             l_y = self.att_embedding(trg_attr)
             start_token = torch.LongTensor([[START_ID]] * batch_size).to(config.device)
-            _, sampled_ys = self.decoder(start_token, max_decode_step, z_x, l_y)
+            _, _, sampled_ys = self.decoder(start_token, max_decode_step, z_x, l_y)
 
         return sampled_ys
 
@@ -159,7 +175,6 @@ class Generator(nn.Module):
         torch.save(self.state_dict(), model_save_path)
 
 
-# TODO implement Discriminator
 class Discriminator(nn.Module):
     def __init__(self, num_labels, dec_hidden_size, hidden_size):
         super(Discriminator, self).__init__()
