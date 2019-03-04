@@ -6,5 +6,6 @@ Pytorch implementation of "Content preserving text generation with attribute con
 You can download the dataset from https://github.com/shentianxiao/language-style-transfer 
 
 ## Dependencies
-python 3.6 <br/>
-pytorch 1.0
+python 3.7 <br/>
+pytorch 1.0 <br/>
+tqdm
