@@ -12,7 +12,14 @@ from model import Generator, Discriminator
 from train_utils import step, outputids2words, eta, progress_bar, user_friendly_time, time_since
 
 
-def train(generator, discriminator, train_data, dev_data):
+def train(embedding, train_data, dev_data):
+    embedding = torch.FloatTensor(embedding).to(config.device)
+    vocab_size = embedding.shape[0]
+    generator = Generator(embedding, vocab_size, config.att_embedding_size, 2, config.ber_prob)
+    generator = generator.to(config.device)
+    discriminator = Discriminator(2, config.dec_hidden_size, config.enc_hidden_size)
+    discriminator = discriminator.to(config.device)
+
     train_pos_loader, train_neg_loader = zip(*train_data)
     dev_pos_loader, dev_neg_loader = zip(*dev_data)
 
@@ -132,12 +139,10 @@ def main():
     dev_file_paths = ["data/yelp/sentiment.dev.0", "data/yelp/sentiment.dev.1"]
     test_file_paths = ["data/yelp/sentiment.test.0", "data/yelp/sentiment.test.1"]
 
-    word2idx, idx2word = build_vocab(train_file_paths)
+    word2idx, idx2word, embedding = build_vocab(train_file_paths,
+                                                glove_path=config.glove_path)
+    print(embedding.shape)
     if config.train:
-        generator = Generator(config.att_embedding_size, 2, config.ber_prob)
-        generator = generator.to(config.device)
-        discriminator = Discriminator(2, config.dec_hidden_size, config.enc_hidden_size)
-        discriminator = discriminator.to(config.device)
         # prepare data loader for training
         train_pos_loader = get_loader(train_file_paths[1], word2idx,
                                       is_neg=False,
@@ -166,7 +171,7 @@ def main():
 
         train_data = zip(train_pos_loader, train_neg_loader)
         dev_data = zip(dev_pos_loader, dev_neg_loader)
-        train(generator, discriminator, train_data, dev_data)
+        train(embedding, train_data, dev_data)
     else:
         test_pos_loader = get_loader(test_file_paths[1], word2idx,
                                      is_neg=False,

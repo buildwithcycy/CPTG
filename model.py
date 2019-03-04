@@ -5,17 +5,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Bernoulli
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from train_utils import sequence_mask, make_one_hot
+
 import config
 from data_utils import START_ID
+from train_utils import sequence_mask
+from train_utils import make_one_hot
 
 
 class Encoder(nn.Module):
-    def __init__(self, vocab_size, embedding_size, hidden_size):
+    def __init__(self, embedding, vocab_size, embedding_size, hidden_size):
         super(Encoder, self).__init__()
         self.embedding = nn.Embedding(vocab_size,
                                       embedding_size,
                                       padding_idx=0)
+        self.embedding = self.embedding.from_pretrained(embedding, freeze=False)
+        # init word embedding from glove and fine tune
+        # self.embedding = embedding.from_pretrained(glove_embedding,
+        #                                            freeze=False)
         self.gru = nn.GRU(embedding_size,
                           hidden_size,
                           batch_first=True,
@@ -98,12 +104,12 @@ class Decoder(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, att_embedding_size, num_atts, ber_prob):
+    def __init__(self, embedding, vocab_size, att_embedding_size, num_atts, ber_prob):
         super(Generator, self).__init__()
-        self.encoder = Encoder(config.vocab_size,
+        self.encoder = Encoder(embedding, vocab_size,
                                config.embedding_size,
                                config.enc_hidden_size)
-        self.decoder = Decoder(config.vocab_size,
+        self.decoder = Decoder(vocab_size,
                                config.embedding_size,
                                config.dec_hidden_size)
 
@@ -180,7 +186,7 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.W = nn.Linear(num_labels, 2 * hidden_size)
         self.v = nn.Linear(2 * hidden_size, 1)
-        self.gru = nn.GRU(dec_hidden_size, hidden_size,
+        self.gru = nn.RNN(dec_hidden_size, hidden_size,
                           batch_first=True,
                           bidirectional=True)
         self.num_labels = num_labels

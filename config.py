@@ -15,6 +15,7 @@ max_decode_step = 20
 
 train = True
 debug = True
+glove_path = "data/glove.840B.300d.txt"
 save_dir = "./save"
 model_path = "./save/3.ckpt"
 output_dir = "./result"

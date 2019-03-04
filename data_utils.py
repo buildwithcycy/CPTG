@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.utils.data as data
+from tqdm import tqdm
 
 PAD_TOKEN = "<PAD>"
 UNK_TOKEN = "<UNK>"
@@ -13,8 +14,9 @@ START_ID = 2
 STOP_ID = 3
 
 
-def build_vocab(file_paths, max_vocab_size=50000):
+def build_vocab(file_paths, max_vocab_size=50000, glove_path=None):
     counter = dict()
+    word2embedding = dict()
     for file_path in file_paths:
         with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -34,7 +36,22 @@ def build_vocab(file_paths, max_vocab_size=50000):
     word2idx[STOP_TOKEN] = 3
     idx2word = {i: word for word, i in word2idx.items()}
 
-    return word2idx, idx2word
+    with open(glove_path, "r", encoding="utf-8") as f:
+        for line in tqdm(f, total=int(2.2e6)):
+            word_vec = line.split(" ")
+            word = word_vec[0]
+            vec = np.array(word_vec[1:], dtype=np.float32)
+            word2embedding[word] = vec
+
+    embedding = np.zeros((len(word2idx), 300), dtype=np.float32)
+    for word, vec in word2embedding.items():
+        try:
+            idx = word2idx[word]
+            embedding[idx] = vec
+        except KeyError:
+            continue
+
+    return word2idx, idx2word, embedding
 
 
 class YelpDataset(data.Dataset):
@@ -95,7 +112,6 @@ def collate_fn(data):
 def get_loader(file_path, word2idx,
                is_neg, batch_size=32, drop_last=False,
                debug=False, shuffle=True):
-
     dataset = YelpDataset(file_path, word2idx, is_neg, debug=debug)
     data_loader = data.DataLoader(dataset,
                                   batch_size=batch_size,
