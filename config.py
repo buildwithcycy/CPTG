@@ -1,7 +1,7 @@
 import torch
 
-batch_size = 64
-num_epochs = 50
+batch_size = 32
+num_epochs = 300
 vocab_size = 50000
 embedding_size = 300
 enc_hidden_size = 500
@@ -17,6 +17,6 @@ train = True
 debug = True
 glove_path = "data/glove.840B.300d.txt"
 save_dir = "./save"
-model_path = "./save/3.ckpt"
+model_path = "./save/14_7.ckpt"
 output_dir = "./result"
-device = torch.device("cuda:1")
+device = torch.device("cuda:0")

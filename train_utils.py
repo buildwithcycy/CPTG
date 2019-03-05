@@ -7,54 +7,57 @@ import config
 from data_utils import UNK_ID
 
 
-def sequence_mask(sequence_length):
+def sequence_mask(sequence_length, max_len=None):
     # from https://github.com/tensorflow/tensorflow/blob/r1.12/tensorflow/python/ops/array_ops.py
     # The basic idea is to compare a range row vector of size maxlen:
     # [0, 1, 2, 3, 4]
     # to length as a matrix with 1 column: [[1], [3], [2]].
     # Because of broadcasting on both arguments this comparison results
     # in a matrix of size (len(lengths), maxlen)
-    row_vector = torch.arange(0, max(sequence_length))
-    matrix = torch.LongTensor(sequence_length).unsqueeze(-1)
+    if max_len is None:
+        max_len = max(sequence_length)
+
+    row_vector = torch.arange(0, max_len).to(config.device)
+    matrix = torch.cuda.LongTensor(sequence_length).unsqueeze(-1)
     result = row_vector < matrix
     result = result.float().to(config.device)
     return result
 
 
-def step(generator, discriminator, criterion, pos_data, neg_data):
-    x_pos, pos_len, l_pos = pos_data
-    x_neg, neg_len, l_neg = neg_data
-    x_pos = x_pos.to(config.device)
-    l_pos = l_pos.to(config.device)
-    x_neg = x_neg.to(config.device)
-    l_neg = l_neg.to(config.device)
+def get_first_eos_idx(inputs, eos_id):
+    """
+
+    :param inputs: [b, t]
+    :param eos_id: id of EOS token
+    :return: [b] the first index of EOS token in inputs
+    """
+    mask = inputs == eos_id
+    indices = torch.argsort(mask, dim=1)[:, 0]
+
+    return indices
+
+
+def step(generator, discriminator, criterion, train_data):
+    x, x_len, l_src = train_data
+    x = x.to(config.device)
+    l_src = l_src.to(config.device)
+    l_trg = torch.ones_like(l_src, device=config.device) - l_src
+    l_trg = l_trg.to(config.device)
+
     # forward pass
     # reconstruction loss
-    pos_recon_logits, pos_hiddens_x, pos_hiddens_y = generator(x_pos, pos_len, l_pos, neg_len, l_neg)
-    neg_recon_logits, neg_hiddens_x, neg_hiddens_y = generator(x_neg, neg_len, l_neg, pos_len, l_pos)
-    pos_targets = x_pos.view(-1)
-    neg_targets = x_neg.view(-1)
-    pos_recon_loss = criterion(pos_recon_logits, pos_targets)
-    neg_recon_loss = criterion(neg_recon_logits, neg_targets)
-    recon_loss = (pos_recon_loss + neg_recon_loss) / 2
+    recon_logits, hiddens_x, hiddens_y, trg_len = generator(x, x_len, l_src, l_trg)
+
+    targets = x.view(-1)
+    recon_loss = criterion(recon_logits, targets)
     # adversarial loss
-    pos_real_logits = discriminator(pos_hiddens_x.detach(), pos_len, l_pos)
-    pos_fake_logits_x = discriminator(pos_hiddens_x.detach(), pos_len, l_neg)
-    pos_fake_logits_y = discriminator(pos_hiddens_y.detach(), neg_len, l_neg)
+    real_logits = discriminator(hiddens_x, x_len, l_src)
+    fake_logits_x = discriminator(hiddens_x, x_len, l_trg)
+    fake_logits_y = discriminator(hiddens_y, trg_len, l_trg, sorting=True)
 
-    pos_errD, pos_errG = get_adv_loss(pos_real_logits,
-                                      pos_fake_logits_x,
-                                      pos_fake_logits_y)
-
-    neg_real_logits = discriminator(neg_hiddens_x.detach(), neg_len, l_neg)
-    neg_fake_logits_x = discriminator(neg_hiddens_x.detach(), neg_len, l_pos)
-    neg_fake_logits_y = discriminator(neg_hiddens_y.detach(), pos_len, l_pos)
-
-    neg_errD, neg_errG = get_adv_loss(neg_real_logits,
-                                      neg_fake_logits_x,
-                                      neg_fake_logits_y)
-    errD = (pos_errD + neg_errD) / 2
-    errG = (neg_errG + neg_errG) / 2
+    errD, errG = get_adv_loss(real_logits,
+                              fake_logits_x,
+                              fake_logits_y)
 
     return recon_loss, errG, errD
 
@@ -74,7 +77,7 @@ def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
     errD_fake_x = criterion(fake_logits_x, label)
     errD_fake = errD_fake_x + errD_fake_y
 
-    errD = (errD_real + errD_fake) / 4
+    errD = errD_real + errD_fake
 
     # loss for generator
     label = torch.full((batch_size,), real_label, device=config.device)

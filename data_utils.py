@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.utils.data as data
+import config
 from tqdm import tqdm
 
 PAD_TOKEN = "<PAD>"
@@ -38,6 +39,8 @@ def build_vocab(file_paths, max_vocab_size=50000, glove_path=None):
 
     with open(glove_path, "r", encoding="utf-8") as f:
         for line in tqdm(f, total=int(2.2e6)):
+            if config.debug:
+                break
             word_vec = line.split(" ")
             word = word_vec[0]
             vec = np.array(word_vec[1:], dtype=np.float32)
@@ -45,6 +48,8 @@ def build_vocab(file_paths, max_vocab_size=50000, glove_path=None):
 
     embedding = np.zeros((len(word2idx), 300), dtype=np.float32)
     for word, vec in word2embedding.items():
+        if config.debug:
+            break
         try:
             idx = word2idx[word]
             embedding[idx] = vec
@@ -55,15 +60,18 @@ def build_vocab(file_paths, max_vocab_size=50000, glove_path=None):
 
 
 class YelpDataset(data.Dataset):
-    def __init__(self, file_path, word2idx, is_neg, debug=False):
-        seqs = open(file_path, "r", encoding="utf-8").readlines()
-        self.seqs = list(map(lambda line: line.strip(), seqs))
-        self.word2idx = word2idx
+    def __init__(self, pos_file_path, neg_file_path, word2idx, debug=False):
+        pos_seqs = open(pos_file_path, "r", encoding="utf-8").readlines()
+        neg_seqs = open(neg_file_path, "r", encoding="utf-8").readlines()
+        pos_seqs = list(map(lambda line: line.strip(), pos_seqs))
+        neg_seqs = list(map(lambda line: line.strip(), neg_seqs))
+
+        pos_labels = np.ones((len(pos_seqs), 1))
+        neg_labels = np.zeros((len(neg_seqs), 1))
+        self.seqs = pos_seqs + neg_seqs
+        self.labels = np.concatenate([pos_labels, neg_labels], axis=0)
         self.num_total_seqs = len(self.seqs)
-        if is_neg:
-            self.labels = np.zeros((self.num_total_seqs, 1))
-        else:
-            self.labels = np.ones((self.num_total_seqs, 1))
+        self.word2idx = word2idx
         if debug:
             self.seqs = self.seqs[:100]
             self.labels = self.labels[:100]
@@ -109,13 +117,13 @@ def collate_fn(data):
     return seqs, seq_lens, labels
 
 
-def get_loader(file_path, word2idx,
-               is_neg, batch_size=32, drop_last=False,
+def get_loader(pos_file_path, neg_file_path,
+               word2idx, batch_size=32,
                debug=False, shuffle=True):
-    dataset = YelpDataset(file_path, word2idx, is_neg, debug=debug)
+
+    dataset = YelpDataset(pos_file_path, neg_file_path, word2idx, debug=debug)
     data_loader = data.DataLoader(dataset,
                                   batch_size=batch_size,
                                   shuffle=shuffle,
-                                  drop_last=drop_last,
                                   collate_fn=collate_fn)
     return data_loader
