@@ -1,5 +1,6 @@
-# CPTG
-Pytorch implementation of Content preserving text generation with attribute controls(https://arxiv.org/abs/1811.01135) 
+# Content Preserving Text Generation with Attribute Controls
+Pytorch implementation of Content Preserving Text Generation with Attribute Controls(https://arxiv.org/abs/1811.01135) <br/>
+This is not an official code and ongoing project. 
 
 
 # Dataset
@@ -9,3 +10,4 @@ You can download Yelp dataset from https://github.com/fuzhenxin/Style-Transfer-i
 Python 3.7 <br />
 Pytorch 1.0 <br />
 tqdm <br />
+
