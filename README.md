@@ -4,7 +4,7 @@ This is not an official code and ongoing project.
 
 
 # Dataset
-You can download Yelp dataset from [here](https://github.com/fuzhenxin/Style-Transfer-in-Text)
+You can download Yelp dataset from [here](https://github.com/shentianxiao/language-style-transfer)
 
 # Dependencies
 Python 3.7 <br />
