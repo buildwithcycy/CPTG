@@ -1,76 +1,12 @@
 import os
-import time
 
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
 import config
 from data_utils import build_vocab, get_loader
-from model import Generator, Discriminator
-from train_utils import step, outputids2words, eta, progress_bar, user_friendly_time, time_since
-
-
-def train(embedding, train_loader, dev_loader):
-    vocab_size = embedding.shape[0]
-    embedding = torch.FloatTensor(embedding).to(config.device)
-    generator = Generator(embedding, vocab_size, config.att_embedding_size, 2, config.ber_prob)
-    generator = generator.to(config.device)
-    discriminator = Discriminator(2, config.dec_hidden_size, config.enc_hidden_size)
-    discriminator = discriminator.to(config.device)
-
-    optimizerG = optim.RMSprop(params=generator.parameters(), lr=config.g_lr)
-    optimizerD = optim.RMSprop(params=discriminator.parameters(), lr=config.d_lr)
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
-
-    num_step = 0
-    best_loss = 1e10
-    batch_nb = len(train_loader)
-    for epoch in range(1, config.num_epochs + 1):
-        start = time.time()
-        for i, train_data in enumerate(train_loader):
-            batch_idx = i + 1
-            num_step += 1
-            recon_loss, errG, errD = step(generator, discriminator, criterion, train_data)
-
-            # backward pass for discriminator
-            optimizerD.zero_grad()
-            errD.backward(retain_graph=True)
-            optimizerD.step()
-
-            # backward pass for generator
-            optimizerG.zero_grad()
-            generator_loss = recon_loss + errG * config.loss_lambda
-            # generator_loss = recon_loss
-            generator_loss.backward()
-            optimizerG.step()
-            msg = "{}/{} {} - ETA : {} - loss G: {:.4f}, loss D: {:.4f}".format(
-                batch_idx, batch_nb,
-                progress_bar(batch_idx, batch_nb),
-                eta(start, batch_idx, batch_nb),
-                generator_loss, errD)
-            print(msg, end="\n")
-
-        dev_loss = evaluate(generator, discriminator, dev_loader)
-        msg = "Epoch {} took {} - final loss : {:.4f} - validation loss : {:.4f}" \
-            .format(epoch, user_friendly_time(time_since(start)), generator_loss, dev_loss)
-        print(msg)
-        if dev_loss < best_loss:
-            best_loss = dev_loss
-            generator.save(config.save_dir, epoch, num_step)
-
-
-def evaluate(generator, discriminator, dev_loader):
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
-    losses = []
-    for i, eval_data in enumerate(dev_loader):
-        with torch.no_grad():
-            recon_loss, errG, errD = step(generator, discriminator, criterion, eval_data)
-            loss = recon_loss + errG * config.loss_lambda
-            losses.append(loss.item())
-
-    return np.mean(losses)
+from model import Generator
+from train_utils import outputids2words, Trainer
 
 
 def inference(model_path, output_dir, data_loader, embedding, idx2word):
@@ -128,8 +64,10 @@ def main():
                                 shuffle=False,
                                 debug=config.debug,
                                 batch_size=config.batch_size)
-
-        train(embedding, train_loader, dev_loader)
+        data_loaders = [train_loader, dev_loader]
+        trainer = Trainer(embedding, data_loaders)
+        trainer.train()
+        # train(embedding, train_loader, dev_loader)
     else:
         test_loader = get_loader(test_file_paths[1],
                                  test_file_paths[0],

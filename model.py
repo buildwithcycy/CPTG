@@ -225,8 +225,8 @@ class Discriminator(nn.Module):
             hidden = hidden.index_select(0, idx_unsort)
 
         l_W = self.W(label_vector)  # [b, 2*d]
-        l_W_phi = torch.sum(l_W * hidden, dim=1, keepdim=True)  # [b,1]
-        v_phi = self.v(hidden)  # [b, 1]
-        prob = torch.sigmoid(l_W_phi + v_phi).squeeze(1)  # [b]
+        l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b]
+        v_phi = self.v(hidden).squeeze(1)  # [b, 1] -> [b]
+        logits = l_W_phi + v_phi  # [b]
 
-        return prob
+        return logits
