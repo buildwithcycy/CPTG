@@ -1,7 +1,7 @@
 import time
 
+import numpy as np
 import torch
-import torch.nn as nn
 
 import config
 from data_utils import UNK_ID
@@ -32,58 +32,13 @@ def get_first_eos_idx(inputs, eos_id):
     :return: [b] the first index of EOS token in inputs
     """
     mask = inputs == eos_id
-    indices = torch.argsort(mask, dim=1)[:, 0]
-
+    # change Tensor to cpu because torch.argmax works differently in cuda and cpu
+    # but np.argmax is more consistent
+    mask = mask.cpu().numpy()
+    indices = np.argmax(mask, 1)
+    # convert numpy array to Tensor
+    indices = torch.LongTensor(indices).to(config.device)
     return indices
-
-
-def step(generator, discriminator, recon_criterion, train_data):
-    x, x_len, l_src = train_data
-    x = x.to(config.device)
-    l_src = l_src.to(config.device)
-    l_trg = torch.ones_like(l_src, device=config.device) - l_src
-    l_trg = l_trg.to(config.device)
-
-    # forward pass
-    # reconstruction loss
-    recon_logits, hiddens_x, hiddens_y, trg_len = generator(x, x_len, l_src, l_trg)
-
-    targets = x.view(-1)
-    recon_loss = recon_criterion(recon_logits, targets)
-    # adversarial loss
-    real_logits = discriminator(hiddens_x, x_len, l_src)
-    fake_logits_x = discriminator(hiddens_x, x_len, l_trg)
-    fake_logits_y = discriminator(hiddens_y, trg_len, l_trg, sorting=True)
-
-    errD, errG = get_adv_loss(real_logits,
-                              fake_logits_x,
-                              fake_logits_y)
-
-    return recon_loss, errG, errD
-
-
-def get_adv_loss(real_logits, fake_logits_x, fake_logits_y):
-    criterion = nn.BCELoss()
-    real_label = 1
-    fake_label = 0
-    batch_size = real_logits.size(0)
-    label = torch.full((batch_size,), real_label, device=config.device)
-    # loss for discriminator
-    errD_real = 2 * criterion(real_logits, label)  # 2logD(h_x, l)
-
-    # log(1 - D(h_y, l')) + log(1 - D(h_x, l'))
-    label = torch.full((batch_size,), fake_label, device=config.device)
-    errD_fake_y = criterion(fake_logits_y, label)
-    errD_fake_x = criterion(fake_logits_x, label)
-    errD_fake = errD_fake_x + errD_fake_y
-
-    errD = errD_real + errD_fake
-
-    # loss for generator
-    label = torch.full((batch_size,), real_label, device=config.device)
-    errG = criterion(fake_logits_y, label)
-
-    return errD, errG
 
 
 def outputids2words(ids, idx2word):
