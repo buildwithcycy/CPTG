@@ -1,5 +1,5 @@
 # Content Preserving Text Generation with Attribute Controls
-Pytorch implementation of Content Preserving Text Generation with Attribute Controls(https://arxiv.org/abs/1811.01135) <br/>
+Pytorch implementation of [Content Preserving Text Generation with Attribute Controls](https://arxiv.org/abs/1811.01135) <br/>
 This is not an official code and ongoing project. 
 
 
