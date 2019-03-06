@@ -5,10 +5,10 @@ import torch
 
 import config
 from data_utils import build_vocab, get_loader
-from model import Generator
-from train_utils import outputids2words, Trainer
+from train_utils import outputids2words
+from trainer import Trainer
 
-
+"""
 def inference(model_path, output_dir, data_loader, embedding, idx2word):
     vocab_size = embedding.shape[0]
     embedding = torch.FloatTensor(embedding).to(config.device)
@@ -41,6 +41,7 @@ def inference(model_path, output_dir, data_loader, embedding, idx2word):
     decoded_sent = total_decoded_sents[idx]
     original_sent = original_sents[idx]
     print(original_sent, "->", decoded_sent)
+"""
 
 
 def main():

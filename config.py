@@ -8,9 +8,9 @@ enc_hidden_size = 500
 dec_hidden_size = 700
 att_embedding_size = 200
 ber_prob = 0.5
-d_lr = 1e-5
+d_lr = 2e-5
 g_lr = 1e-3
-loss_lambda = 0.1
+loss_lambda = 0.5
 max_decode_step = 20
 
 train = True
