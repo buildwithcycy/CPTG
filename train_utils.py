@@ -29,7 +29,7 @@ def get_first_eos_idx(inputs, eos_id):
 
     :param inputs: [b, t]
     :param eos_id: id of EOS token
-    :return: [b] seq_len of input sequence
+    :return: [b] the index of first occurence of eos
     """
     mask = input_ids == eos_id
     num_eos = torch.sum(mask, 1)
@@ -43,8 +43,7 @@ def get_first_eos_idx(inputs, eos_id):
     # in case there is no eos in the sequence
     max_len = input_ids.size(1)
     seq_len = seq_len.masked_fill(num_eos == 0, max_len - 1)
-    # +1 for eos
-    seq_len = seq_len + 1
+    
 
     return seq_len
 
