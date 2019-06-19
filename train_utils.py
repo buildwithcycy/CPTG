@@ -29,16 +29,24 @@ def get_first_eos_idx(inputs, eos_id):
 
     :param inputs: [b, t]
     :param eos_id: id of EOS token
-    :return: [b] the first index of EOS token in inputs
+    :return: [b] seq_len of input sequence
     """
-    mask = inputs == eos_id
+    mask = input_ids == eos_id
+    num_eos = torch.sum(mask, 1)
     # change Tensor to cpu because torch.argmax works differently in cuda and cpu
-    # but np.argmax is more consistent
+    # but np.argmax is consistent it returns the first index of the maximum element
     mask = mask.cpu().numpy()
     indices = np.argmax(mask, 1)
     # convert numpy array to Tensor
-    indices = torch.LongTensor(indices).to(config.device)
-    return indices
+    seq_len = torch.LongTensor(indices).to(input_ids.device)
+
+    # in case there is no eos in the sequence
+    max_len = input_ids.size(1)
+    seq_len = seq_len.masked_fill(num_eos == 0, max_len - 1)
+    # +1 for eos
+    seq_len = seq_len + 1
+
+    return seq_len
 
 
 def outputids2words(ids, idx2word):
