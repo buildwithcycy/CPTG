@@ -211,18 +211,12 @@ class Discriminator(nn.Module):
         # make one-hot vector
         label_vector = make_one_hot(attr_vector, self.num_labels).to(config.device)
 
-        if sorting:
-            seq_len, _ = torch.sort(seq_len, descending=True)
-            idx_sort = torch.argsort(seq_len, descending=True)
-            idx_unsort = torch.argsort(idx_sort)
-            inputs = inputs.index_select(0, idx_sort)
 
-        packed = pack_padded_sequence(inputs, seq_len, batch_first=True)
+        packed = pack_padded_sequence(inputs, seq_len, 
+                                      batch_first=True,
+                                      enforce_sorted=False)
         _, hidden = self.gru(packed)  # [2, b, d]
         hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
-
-        if sorting:
-            hidden = hidden.index_select(0, idx_unsort)
 
         l_W = self.W(label_vector)  # [b, 2*d]
         l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b]
