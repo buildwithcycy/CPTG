@@ -8,7 +8,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 
 import config
 from data_utils import START_ID, STOP_ID
-from train_utils import sequence_mask, make_one_hot, get_first_eos_idx
+from train_utils import get_first_eos_idx
 
 
 class Encoder(nn.Module):
@@ -136,15 +136,15 @@ class Generator(nn.Module):
         first_eos_idx = get_first_eos_idx(sampled_ys, STOP_ID)
         trg_len = first_eos_idx + 1
 
-        # mask for hidden states of PAD
-        max_len = torch.max(trg_len)
-        indices = torch.arange(max_len).unsqueeze(0).repeat([batch_size, 1])
-        y_mask = indices < trg_len.unsqueeze(1)
-        y_mask = y_mask.unsqueeze(2)
-        hiddens_y = hiddens_y.masked_fill(y_mask == 0, 0.0)
+        # # mask for hidden states of PAD
+        # max_len = torch.max(trg_len)
+        # indices = torch.arange(max_len).unsqueeze(0).repeat([batch_size, 1])
+        # y_mask = indices < trg_len.unsqueeze(1)
+        # y_mask = y_mask.unsqueeze(2)
+        # hiddens_y = hiddens_y.masked_fill(y_mask == 0, 0.0)
 
         # back translation from y to x
-        z_y = self.encoder(sampled_ys, trg_len, sorting=True)
+        z_y = self.encoder(sampled_ys, trg_len)
         # Bernoulli sampling
         gate = self.sampler.sample(sample_shape=z_y.size()).to(config.device)
         z_xy = gate * z_x + (1 - gate) * z_y
@@ -152,11 +152,13 @@ class Generator(nn.Module):
 
         # for reconstructing x we use teacher forcing
         go_x = torch.cat((go_token, src_inputs), dim=1)
-        hiddens_x, recon_logits, sampled_xs = self.decoder(go_x, src_max_len, z_xy, l_x)
+        max_decode_step = src_max_len - 1  # exclude sos
+        hiddens_x, recon_logits, sampled_xs = self.decoder(go_x, max_decode_step,
+                                                           z_xy, l_x)
 
         # mask for hidden states of PAD and make them constant
-        x_mask = torch.sign(src_inputs).unsqueeze(2).byte()
-        hiddens_x = hiddens_x.masked_fill(x_mask == 0, 0.0)
+        # x_mask = torch.sign(src_inputs).unsqueeze(2).byte()
+        # hiddens_x = hiddens_x.masked_fill(x_mask == 0, 0.0)
 
         return recon_logits, hiddens_x, hiddens_y, trg_len  # [b * t, |V|]
 
@@ -212,6 +214,7 @@ class Discriminator(nn.Module):
         packed = pack_padded_sequence(inputs, seq_len,
                                       batch_first=True,
                                       enforce_sorted=False)
+
         _, hidden = self.gru(packed)  # [2, b, d]
         hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
 

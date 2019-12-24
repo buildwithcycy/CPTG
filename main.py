@@ -1,6 +1,9 @@
 import config
 from data_utils import build_vocab, get_loader
 from trainer import Trainer
+import os
+
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 
 def main():

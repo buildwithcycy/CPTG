@@ -1,5 +1,3 @@
-import torch
-
 batch_size = 32
 num_epochs = 300
 vocab_size = 50000
@@ -14,9 +12,9 @@ loss_lambda = 0.5
 max_decode_step = 20
 
 train = True
-debug = True
+debug = False
 glove_path = "data/glove.840B.300d.txt"
 save_dir = "./save"
 model_path = "./save/14_7.ckpt"
 output_dir = "./result"
-device = torch.device("cuda:0")
+device = "cpu"

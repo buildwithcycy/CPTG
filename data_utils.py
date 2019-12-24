@@ -5,9 +5,9 @@ import config
 from tqdm import tqdm
 
 PAD_TOKEN = "<PAD>"
-UNK_TOKEN = "<UNK>"
-START_TOKEN = "<BOS>"
-STOP_TOKEN = "<EOS>"
+UNK_TOKEN = "UNKNOWN"
+START_TOKEN = "<s>"
+STOP_TOKEN = "EOS"
 
 PAD_ID = 0
 UNK_ID = 1
@@ -79,7 +79,8 @@ class YelpDataset(data.Dataset):
 
     def __getitem__(self, index):
         seq = self.seqs[index]
-        label = torch.LongTensor(self.labels[index])
+        label = torch.tensor(self.labels[index],
+                             dtype=torch.long)
         seq = self.words2ids(seq)
         return seq, label
 
@@ -88,20 +89,22 @@ class YelpDataset(data.Dataset):
 
     def words2ids(self, sentence):
         tokens = sentence.lower().split()
-        sequence = []
+        sequence = list()
+        sequence.append(self.word2idx[START_TOKEN])
         for token in tokens:
             if token in self.word2idx:
                 sequence.append(self.word2idx[token])
             else:
                 sequence.append(self.word2idx[UNK_TOKEN])
         sequence.append(self.word2idx[STOP_TOKEN])
-        sequence = torch.Tensor(sequence)
+        sequence = torch.tensor(sequence, dtype=torch.long)
         return sequence
 
 
 def collate_fn(data):
     def merge(sequences):
-        lengths = [len(seq) for seq in sequences]
+        lengths = torch.tensor([len(seq) for seq in sequences],
+                               dtype=torch.long)
         padded_seq = torch.zeros(len(sequences), max(lengths), dtype=torch.long)
         for i, seq in enumerate(sequences):
             end = lengths[i]

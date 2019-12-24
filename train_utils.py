@@ -3,25 +3,7 @@ import time
 import numpy as np
 import torch
 
-import config
 from data_utils import UNK_ID
-
-
-def sequence_mask(sequence_length, max_len=None):
-    # from https://github.com/tensorflow/tensorflow/blob/r1.12/tensorflow/python/ops/array_ops.py
-    # The basic idea is to compare a range row vector of size maxlen:
-    # [0, 1, 2, 3, 4]
-    # to length as a matrix with 1 column: [[1], [3], [2]].
-    # Because of broadcasting on both arguments this comparison results
-    # in a matrix of size (len(lengths), maxlen)
-    if max_len is None:
-        max_len = max(sequence_length)
-
-    row_vector = torch.arange(0, max_len).to(config.device)
-    matrix = torch.cuda.LongTensor(sequence_length).unsqueeze(-1)
-    result = row_vector < matrix
-    result = result.float().to(config.device)
-    return result
 
 
 def get_first_eos_idx(input_ids, eos_id):
@@ -38,12 +20,12 @@ def get_first_eos_idx(input_ids, eos_id):
     mask = mask.cpu().numpy()
     indices = np.argmax(mask, 1)
     # convert numpy array to Tensor
-    seq_len = torch.LongTensor(indices).to(input_ids.device)
+    seq_len = torch.tensor(indices, dtype=torch.long,
+                           device=input_ids.device)
 
     # in case there is no eos in the sequence
     max_len = input_ids.size(1)
     seq_len = seq_len.masked_fill(num_eos == 0, max_len - 1)
-    
 
     return seq_len
 
@@ -51,7 +33,6 @@ def get_first_eos_idx(input_ids, eos_id):
 def outputids2words(ids, idx2word):
     words = []
     for id in ids:
-        id = id.item()
         if id in idx2word:
             word = idx2word[id]
         else:

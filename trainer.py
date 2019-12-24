@@ -35,7 +35,6 @@ class Trainer(object):
         discriminator = discriminator.to(config.device)
         self.g_optim = optim.Adam(params=generator.parameters(), lr=config.g_lr)
         self.d_optim = optim.Adam(params=discriminator.parameters(), lr=config.d_lr)
-        criterion = nn.CrossEntropyLoss(ignore_index=0)
 
         num_step = 0
         best_loss = 1e10
@@ -44,7 +43,7 @@ class Trainer(object):
             start = time.time()
             for batch_idx, train_data in enumerate(self.train_loader, start=1):
                 num_step += 1
-                recon_loss, errG, errD = self.step(generator, discriminator, criterion, train_data)
+                recon_loss, errG, errD = self.step(generator, discriminator, train_data)
 
                 generator_loss = recon_loss + errG * config.loss_lambda
                 # generator_loss = recon_loss
@@ -78,8 +77,9 @@ class Trainer(object):
         recon_criterion = nn.CrossEntropyLoss(ignore_index=0)
 
         self.d_optim.zero_grad()
-        real_logits = discriminator(hiddens_x.detach(), x_len, l_src)
-        fake_logits_x = discriminator(hiddens_x.detach(), x_len, l_trg)
+        _x_len = x_len - 1  # -1 for excluding sos
+        real_logits = discriminator(hiddens_x.detach(), _x_len, l_src)
+        fake_logits_x = discriminator(hiddens_x.detach(), _x_len, l_trg)
         fake_logits_y = discriminator(hiddens_y.detach(), trg_len, l_trg)
 
         real_label = torch.ones_like(real_logits)
@@ -96,7 +96,7 @@ class Trainer(object):
 
         # backward pass of Generator
         self.g_optim.zero_grad()
-        targets = x.view(-1)
+        targets = x[:, 1:].contiguous().view(-1)
         recon_loss = recon_criterion(recon_logits, targets)
 
         fake_logits_y = discriminator(hiddens_y, trg_len, l_trg)
@@ -117,7 +117,7 @@ class Trainer(object):
                 l_src = l_src.to(config.device)
                 l_trg = torch.ones_like(l_src, device=config.device) - l_src
                 recon_logits, _, _, _ = generator(x, x_len, l_src, l_trg)
-                target = x.view(-1)
+                target = x[:, 1:].contiguous().view(-1)
                 loss = criterion(recon_logits, target)
                 losses.append(loss.item())
 
@@ -134,13 +134,15 @@ class Trainer(object):
         for test_data in self.test_loader:
             x, x_len, l_src = test_data
             x = x.to(config.device)
-            l_trg = torch.zeros_like(l_src, device=config.device)
+            l_trg = torch.zeros_like(l_src, device=config.device) - l_src
             decoded = model.decode(x, x_len, l_trg, config.max_decode_step)
 
-            origin_sent = [outputids2words(sent, idx2word) for sent in x.detach()]
+            origin_sent = [outputids2words(sent, idx2word)
+                           for sent in x.detach().cpu().tolist()]
             original_sents.extend(origin_sent)
 
-            decoded_sents = [outputids2words(sent, idx2word) for sent in decoded.detach()]
+            decoded_sents = [outputids2words(sent, idx2word)
+                             for sent in decoded.detach().cpu().tolist()]
             total_decoded_sents.extend(decoded_sents)
 
         # write the results into text file
