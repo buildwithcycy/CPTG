@@ -52,7 +52,7 @@ class Trainer(object):
                     progress_bar(batch_idx, batch_nb),
                     eta(start, batch_idx, batch_nb),
                     recon_loss, errG, errD)
-                print(msg)
+                print(msg, end="\r")
             # only see reconstruction loss
             dev_loss = self.evaluate(generator)
             msg = "Epoch {} took {} - final loss : {:.4f} - validation loss : {:.4f}" \
@@ -90,7 +90,7 @@ class Trainer(object):
         # log(1 - D(h_y, l')) + log(1 - D(h_x, l'))
         errD_fake_x = gan_loss(fake_logits_x, fake_label)
         errD_fake_y = gan_loss(fake_logits_y, fake_label)
-        errD = errD_real + errD_fake_x + errD_fake_y
+        errD = (errD_real + errD_fake_x + errD_fake_y).mean()
         errD.backward()
         self.d_optim.step()
 
