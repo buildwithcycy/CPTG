@@ -23,19 +23,14 @@ class Encoder(nn.Module):
                           num_layers=1,
                           bidirectional=False)
 
-    def forward(self, inputs, seq_len, sorting=False):
-        if sorting:
-            seq_len, _ = torch.sort(seq_len, descending=True)
-            idx_sort = torch.argsort(seq_len, descending=True)
-            idx_unsort = torch.argsort(idx_sort)
-            inputs = inputs.index_select(0, idx_unsort)
+    def forward(self, inputs, seq_len):
         embedded = self.embedding(inputs)
-        packed = pack_padded_sequence(embedded, seq_len, batch_first=True)
+        packed = pack_padded_sequence(embedded, seq_len,
+                                      batch_first=True,
+                                      enforce_sorted=False)
 
         # hidden :[1, b, d]
         _, hidden = self.gru(packed)
-        if sorting:
-            hidden = hidden.index_select(1, idx_unsort)
         return hidden
 
 
@@ -79,22 +74,20 @@ class Decoder(nn.Module):
             scores = F.softmax(logit, dim=1)
 
             # hard sampling for y
+            sampled_id = torch.argmax(scores, 1, keepdim=True)
+            sampled_ids.append(sampled_id)
+
             if total_length == 1:
-                sampled_id = torch.multinomial(scores, num_samples=1)  # [b, 1]
-                sampled_ids.append(sampled_id)
                 # update next token embedding
                 curr_embedded = self.embedding(sampled_id)
-
             else:
-                sampled_id = torch.argmax(scores, 1, keepdim=True)
-                sampled_ids.append(sampled_id)
                 # get next token embedding because it is teacher forcing
                 curr_embedded = embedded[:, t + 1, :].unsqueeze(1)
             # update hidden
             prev_hidden = hidden
 
         hiddens = torch.cat(hiddens, dim=0).transpose(0, 1)  # [t, b, d] -> [b,t,d]
-        logits = torch.stack(logits, dim=1)  # [b, t*|V|] why torch.cat(logits, dim=0) does not work?
+        logits = torch.stack(logits, dim=1)  # [b,t,|V|]
         logits = logits.view(batch_size * max_length, -1)
         sampled_ids = torch.cat(sampled_ids, dim=1)  # [b, t]
 
@@ -127,11 +120,13 @@ class Generator(nn.Module):
         :return:
         """
         # translation from x to y
-        batch_size, src_max_len = list(src_inputs.size())
+        batch_size, src_max_len = src_inputs.size()
 
         z_x = self.encoder(src_inputs, src_len)
         l_y = self.att_embedding(trg_attr)
-        go_token = torch.full((batch_size,1), START_ID, dtype=torch.long, device=config.device)
+        go_token = START_ID * torch.ones((batch_size, 1),
+                                         dtype=torch.long,
+                                         device=src_inputs.device)
 
         hiddens_y, logits_y, sampled_ys = self.decoder(go_token,
                                                        config.max_decode_step,
@@ -141,9 +136,12 @@ class Generator(nn.Module):
         first_eos_idx = get_first_eos_idx(sampled_ys, STOP_ID)
         trg_len = first_eos_idx + 1
 
-        # mask for hiddens of PAD
-        y_mask = sequence_mask(trg_len, config.max_decode_step).unsqueeze(-1)
-        hiddens_y = hiddens_y * y_mask
+        # mask for hidden states of PAD
+        max_len = torch.max(trg_len)
+        indices = torch.arange(max_len).unsqueeze(0).repeat([batch_size, 1])
+        y_mask = indices < trg_len.unsqueeze(1)
+        y_mask = y_mask.unsqueeze(2)
+        hiddens_y = hiddens_y.masked_fill(y_mask == 0, 0.0)
 
         # back translation from y to x
         z_y = self.encoder(sampled_ys, trg_len, sorting=True)
@@ -156,9 +154,9 @@ class Generator(nn.Module):
         go_x = torch.cat((go_token, src_inputs), dim=1)
         hiddens_x, recon_logits, sampled_xs = self.decoder(go_x, src_max_len, z_xy, l_x)
 
-        # mask for hiddens of PAD and make them constant
-        x_mask = sequence_mask(src_len).unsqueeze(-1)
-        hiddens_x = hiddens_x * x_mask
+        # mask for hidden states of PAD and make them constant
+        x_mask = torch.sign(src_inputs).unsqueeze(2).byte()
+        hiddens_x = hiddens_x.masked_fill(x_mask == 0, 0.0)
 
         return recon_logits, hiddens_x, hiddens_y, trg_len  # [b * t, |V|]
 
@@ -192,34 +190,32 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, num_labels, dec_hidden_size, hidden_size):
         super(Discriminator, self).__init__()
-        self.W = nn.Linear(num_labels, 2 * hidden_size)
+        self.W = nn.Bilinear(num_labels, 2 * hidden_size, 1, bias=False)
         self.v = nn.Linear(2 * hidden_size, 1, bias=False)
         self.gru = nn.RNN(dec_hidden_size, hidden_size,
                           batch_first=True,
                           bidirectional=True)
         self.num_labels = num_labels
 
-    def forward(self, inputs, seq_len, attr_vector, sorting=False):
+    def forward(self, inputs, seq_len, attr_vector):
         """
 
         :param inputs: [b, t]
         :param seq_len: [b]
         :param attr_vector: [b]
-        :param sorting: whether to sort inputs by seq_len
         :return:
         """
         # make one-hot vector
-        label_vector = make_one_hot(attr_vector, self.num_labels).to(config.device)
+        label_vector = F.one_hot(attr_vector,
+                                 num_classes=self.num_labels).float().to(inputs.device)
 
-
-        packed = pack_padded_sequence(inputs, seq_len, 
+        packed = pack_padded_sequence(inputs, seq_len,
                                       batch_first=True,
                                       enforce_sorted=False)
         _, hidden = self.gru(packed)  # [2, b, d]
         hidden = torch.cat([h for h in hidden], dim=1)  # [b, 2*d]
 
-        l_W = self.W(label_vector)  # [b, 2*d]
-        l_W_phi = torch.sum(l_W * hidden, dim=1)  # [b]
+        l_W_phi = self.W(label_vector, hidden)  # [b, 1]
         v_phi = self.v(hidden).squeeze(1)  # [b, 1] -> [b]
         logits = l_W_phi + v_phi  # [b]
 

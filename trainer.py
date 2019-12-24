@@ -25,9 +25,13 @@ class Trainer(object):
         self.embedding = torch.FloatTensor(embedding).to(config.device)
 
     def train(self):
-        generator = Generator(self.embedding, self.vocab_size, config.att_embedding_size, 2, config.ber_prob)
+        generator = Generator(self.embedding, self.vocab_size,
+                              config.att_embedding_size,
+                              2, config.ber_prob)
         generator = generator.to(config.device)
-        discriminator = Discriminator(2, config.dec_hidden_size, config.enc_hidden_size)
+
+        discriminator = Discriminator(2, config.dec_hidden_size,
+                                      config.enc_hidden_size)
         discriminator = discriminator.to(config.device)
         self.g_optim = optim.Adam(params=generator.parameters(), lr=config.g_lr)
         self.d_optim = optim.Adam(params=discriminator.parameters(), lr=config.d_lr)
@@ -38,8 +42,7 @@ class Trainer(object):
         batch_nb = len(self.train_loader)
         for epoch in range(1, config.num_epochs + 1):
             start = time.time()
-            for i, train_data in enumerate(self.train_loader):
-                batch_idx = i + 1
+            for batch_idx, train_data in enumerate(self.train_loader, start=1):
                 num_step += 1
                 recon_loss, errG, errD = self.step(generator, discriminator, criterion, train_data)
 
@@ -60,7 +63,7 @@ class Trainer(object):
                 best_loss = dev_loss
                 generator.save(config.save_dir, epoch, num_step)
 
-    def step(self, generator, discriminator, recon_criterion, train_data):
+    def step(self, generator, discriminator, train_data):
         x, x_len, l_src = train_data
         x = x.to(config.device)
         l_src = l_src.to(config.device)
@@ -72,16 +75,15 @@ class Trainer(object):
 
         # backward pass and update Discriminator
         gan_loss = nn.BCEWithLogitsLoss()
-        batch_size = x.size(0)
+        recon_criterion = nn.CrossEntropyLoss(ignore_index=0)
 
-        # FIXME: detach either hiddens_x or hiddens_y or both?
         self.d_optim.zero_grad()
         real_logits = discriminator(hiddens_x.detach(), x_len, l_src)
         fake_logits_x = discriminator(hiddens_x.detach(), x_len, l_trg)
-        fake_logits_y = discriminator(hiddens_y.detach(), trg_len, l_trg, sorting=True)
+        fake_logits_y = discriminator(hiddens_y.detach(), trg_len, l_trg)
 
-        real_label = torch.full((batch_size,), 1, device=config.device)
-        fake_label = torch.full((batch_size,), 0, device=config.device)
+        real_label = torch.ones_like(real_logits)
+        fake_label = torch.zeros_like(fake_logits_x)
         # 2logD(h_x, l)
         errD_real = 2 * gan_loss(real_logits, real_label)
 
@@ -97,8 +99,8 @@ class Trainer(object):
         targets = x.view(-1)
         recon_loss = recon_criterion(recon_logits, targets)
 
-        fake_logits_y = discriminator(hiddens_y, trg_len, l_trg, sorting=True)
-        errG = 2 * gan_loss(fake_logits_y, real_label)
+        fake_logits_y = discriminator(hiddens_y, trg_len, l_trg)
+        errG = gan_loss(fake_logits_y, real_label)
         generator_loss = recon_loss + config.loss_lambda * errG
         generator_loss.backward()
         self.g_optim.step()
@@ -122,8 +124,9 @@ class Trainer(object):
         return np.mean(losses)
 
     def inference(self, model_path, output_dir, idx2word):
-        model = Generator(self.embedding, self.vocab_size, config.att_embedding_size, 2, config.ber_prob)
-        model.load_state_dict(torch.load(model_path))
+        model = Generator(self.embedding, self.vocab_size,
+                          config.att_embedding_size, 2, config.ber_prob)
+        model.load_state_dict(torch.load(model_path, map_location="cpu"))
         model = model.to(config.device)
         total_decoded_sents = []
         original_sents = []

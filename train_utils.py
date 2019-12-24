@@ -24,10 +24,10 @@ def sequence_mask(sequence_length, max_len=None):
     return result
 
 
-def get_first_eos_idx(inputs, eos_id):
+def get_first_eos_idx(input_ids, eos_id):
     """
 
-    :param inputs: [b, t]
+    :param input_ids: [b, t]
     :param eos_id: id of EOS token
     :return: [b] the index of first occurence of eos
     """
