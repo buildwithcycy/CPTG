@@ -8,6 +8,6 @@ You can download Yelp dataset from [here](https://github.com/shentianxiao/langua
 
 # Dependencies
 Python 3.7 <br />
-Pytorch 1.2 <br />
+Pytorch 1.1 <br />
 tqdm <br />
 
