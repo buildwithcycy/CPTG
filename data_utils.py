@@ -111,8 +111,6 @@ def collate_fn(data):
             padded_seq[i, :end] = seq[:end]
         return padded_seq, lengths
 
-    data.sort(key=lambda x: len(x[0]), reverse=True)
-
     seqs, labels = zip(*data)
     seqs, seq_lens = merge(seqs)
     labels = torch.cat(labels, dim=0)

@@ -41,6 +41,8 @@ class Trainer(object):
         batch_nb = len(self.train_loader)
         for epoch in range(1, config.num_epochs + 1):
             start = time.time()
+            discriminator.train()
+            generator.train()
             for batch_idx, train_data in enumerate(self.train_loader, start=1):
                 num_step += 1
                 recon_loss, errG, errD = self.step(generator, discriminator, train_data)
@@ -55,8 +57,10 @@ class Trainer(object):
                 print(msg, end="\r")
             # only see reconstruction loss
             dev_loss = self.evaluate(generator)
-            msg = "Epoch {} took {} - final loss : {:.4f} - validation loss : {:.4f}" \
-                .format(epoch, user_friendly_time(time_since(start)), generator_loss, dev_loss)
+            msg = "Epoch {} took {} - final loss : {:.4f}" \
+                  " - validation loss : {:.4f}" \
+                .format(epoch, user_friendly_time(time_since(start)),
+                        generator_loss, dev_loss)
             print(msg)
             if dev_loss < best_loss:
                 best_loss = dev_loss
@@ -105,11 +109,12 @@ class Trainer(object):
         generator_loss.backward()
         self.g_optim.step()
 
-        return recon_loss, errG, errD
+        return recon_loss.item(), errG.item(), errD.item()
 
     def evaluate(self, generator):
         criterion = nn.CrossEntropyLoss(ignore_index=0)
         losses = []
+        generator.eval()
         for i, eval_data in enumerate(self.dev_loader):
             with torch.no_grad():
                 x, x_len, l_src = eval_data
@@ -126,6 +131,7 @@ class Trainer(object):
     def inference(self, model_path, output_dir, idx2word):
         model = Generator(self.embedding, self.vocab_size,
                           config.att_embedding_size, 2, config.ber_prob)
+        model.eval()
         model.load_state_dict(torch.load(model_path, map_location="cpu"))
         model = model.to(config.device)
         total_decoded_sents = []
@@ -135,7 +141,8 @@ class Trainer(object):
             x, x_len, l_src = test_data
             x = x.to(config.device)
             l_trg = torch.zeros_like(l_src, device=config.device) - l_src
-            decoded = model.decode(x, x_len, l_trg, config.max_decode_step)
+            with torch.no_grad():
+                decoded = model.decode(x, x_len, l_trg, config.max_decode_step)
 
             origin_sent = [outputids2words(sent, idx2word)
                            for sent in x.detach().cpu().tolist()]
