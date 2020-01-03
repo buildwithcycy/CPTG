@@ -32,15 +32,15 @@ def get_first_eos_idx(input_ids, eos_id):
 
 def outputids2words(ids, idx2word):
     words = []
-    for id in ids:
-        if id in idx2word:
-            word = idx2word[id]
+    for _id in ids:
+        if _id in idx2word:
+            word = idx2word[_id]
         else:
             word = idx2word[UNK_ID]
 
         words.append(word)
     try:
-        fst_eos_idx = words.index("<EOS>")
+        fst_eos_idx = words.index("EOS")
         words = words[:fst_eos_idx]
     except ValueError:
         words = words

@@ -11,10 +11,10 @@ g_lr = 1e-3
 loss_lambda = 0.5
 max_decode_step = 20
 
-train = True
+train = False
 debug = False
 glove_path = "data/glove.840B.300d.txt"
 save_dir = "./save"
-model_path = "./save/14_7.ckpt"
+model_path = "./save/305338_22.ckpt"
 output_dir = "./result"
-device = "cpu"
+device = "cuda:0"

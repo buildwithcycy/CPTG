@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
 
 import config
 from model import Generator, Discriminator
@@ -22,7 +23,9 @@ class Trainer(object):
             self.test_loader = data_loaders[0]
             self.is_train = False
         self.vocab_size = embedding.shape[0]
-        self.embedding = torch.FloatTensor(embedding).to(config.device)
+        self.embedding = torch.tensor(embedding,
+                                      dtype=torch.float,
+                                      device=config.device)
 
     def train(self):
         generator = Generator(self.embedding, self.vocab_size,
@@ -137,10 +140,11 @@ class Trainer(object):
         total_decoded_sents = []
         original_sents = []
 
-        for test_data in self.test_loader:
+        for test_data in tqdm(self.test_loader, total=len(self.test_loader)):
             x, x_len, l_src = test_data
             x = x.to(config.device)
-            l_trg = torch.zeros_like(l_src, device=config.device) - l_src
+            l_src = l_src.to(config.device)
+            l_trg = torch.ones_like(l_src, device=config.device) - l_src
             with torch.no_grad():
                 decoded = model.decode(x, x_len, l_trg, config.max_decode_step)
 
@@ -153,6 +157,8 @@ class Trainer(object):
             total_decoded_sents.extend(decoded_sents)
 
         # write the results into text file
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         path = os.path.join(output_dir, "decoded.txt")
 
         with open(path, "w", encoding="utf-8") as f:
