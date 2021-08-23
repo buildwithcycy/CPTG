@@ -13,8 +13,10 @@ max_decode_step = 20
 
 train = False
 debug = False
-glove_path = "data/glove.840B.300d.txt"
+#glove_path = "data/glove.840B.300d.txt"
+glove_path ="data/glove.840B.300d.txt"
 save_dir = "./save"
 model_path = "./save/305338_22.ckpt"
 output_dir = "./result"
-device = "cuda:0"
+device = "device:0" #
+print ("I am in config file and finished setting up")
